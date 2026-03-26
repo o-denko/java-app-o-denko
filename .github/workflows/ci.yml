@@ -1,32 +1,44 @@
-name: Continuous Integration
+name: CI with SonarQube Analysis
 
 on:
   push:
     branches: [ main ]
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
     branches: [ main ]
   workflow_dispatch: 
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest 
+  build-and-analyze:
+    name: Build and Analyze
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4 # v4 — stable version
+        with:
+          fetch-depth: 0 
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'zulu'
+          distribution: 'temurin'
+          cache: 'maven' # Automatic caching of Maven dependencies
 
-      - name: Install dependencies
-        run: mvn compile
+      # Caching step for SonarQube itself (speeds up subsequent scans)
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
-      - name: Build project
-        run: mvn package -DskipTests
-
-      - name: Run unit tests
-        run: mvn test
+      - name: Build, Test and Analyze
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        # 'mvn verify' will run compile, package, and test automatically
+        # 'sonar:sonar' will send the results and JaCoCo report to your server
+        run: mvn -B verify sonar:sonar -Dmaven.test.failure.ignore=true
